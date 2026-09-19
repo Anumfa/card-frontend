@@ -114,38 +114,55 @@ const CountdownTimer = () => {
 /* ------------------------------------------------------------------ */
 /*  Hero — curtain video                                               */
 /* ------------------------------------------------------------------ */
-const Hero = ({ onFinish }) => {
+const Hero = ({ onFinish = () => {} }) => {
   const videoRef = useRef(null);
   const [started, setStarted] = useState(false);
   const [finished, setFinished] = useState(false);
+  const doneRef = useRef(false);
 
   const finish = useCallback(() => {
+    if (doneRef.current) return;
+    doneRef.current = true;
     setFinished(true);
     onFinish();
   }, [onFinish]);
 
-  const start = useCallback(() => {
-    setStarted(true);
+  const play = useCallback(() => {
     const video = videoRef.current;
-    if (video) video.play().catch(finish);
-  }, [finish]);
+    if (!video) return;
+    video.muted = true;
+    video
+      .play()
+      .then(() => setStarted(true))
+      .catch(() => setStarted(false));
+  }, []);
 
-  // reveals the names if the video cannot play
+  // the video starts on its own once the curtains have opened
   useEffect(() => {
-    if (!started) return;
-    const timer = setTimeout(finish, 45000);
+    play();
+  }, [play]);
+
+  // safety net — never leave anyone stuck on the video
+  useEffect(() => {
+    if (!started || finished) return;
+    const video = videoRef.current;
+    const seconds = video && Number.isFinite(video.duration) ? video.duration : 30;
+    const timer = setTimeout(finish, (seconds + 3) * 1000);
     return () => clearTimeout(timer);
-  }, [started, finish]);
+  }, [started, finished, finish]);
 
   return (
-    <section className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-[#3c070c]">
+    <section
+      id="hero-section"
+      className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-[#3c070c]"
+    >
       <video
         ref={videoRef}
         src={ASSETS.video}
         muted
         playsInline
-        preload="metadata"
-        onClick={start}
+        preload="auto"
+        onClick={play}
         onEnded={finish}
         className={`absolute inset-0 z-[1] h-full w-full cursor-pointer object-cover transition-opacity duration-[1500ms] ${
           finished ? 'opacity-80' : 'opacity-100'
@@ -162,11 +179,11 @@ const Hero = ({ onFinish }) => {
         }`}
       />
 
-      {/* tap to begin */}
+      {/* tap to play — only if the browser blocked autoplay */}
       {!started && (
         <button
           type="button"
-          onClick={start}
+          onClick={play}
           aria-label="Play invitation video"
           className="absolute inset-0 z-20 flex cursor-pointer flex-col items-center justify-center gap-3.5"
         >
@@ -231,8 +248,8 @@ const Hero = ({ onFinish }) => {
 const ScrollableInvite = () => {
   const audioRef = useRef(null);
   const [isMuted, setIsMuted] = useState(false);
-  const [introDone, setIntroDone] = useState(false);
-  const [showScrollCue, setShowScrollCue] = useState(true);
+  const [phase, setPhase] = useState('video');
+  const [showScrollCue, setShowScrollCue] = useState(false);
 
   // background song — started from the link, resumed on the first interaction
   useEffect(() => {
@@ -267,23 +284,36 @@ const ScrollableInvite = () => {
     if (audio) audio.muted = isMuted;
   }, [isMuted]);
 
-  // lock the page while the intro video plays
+  // scroll stays locked while the intro video plays, then opens up for the cards
   useEffect(() => {
-    document.body.style.overflow = introDone ? '' : 'hidden';
+    document.body.style.overflow = phase === 'video' ? 'hidden' : 'auto';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.removeProperty('overflow');
+      document.body.style.overflow = 'auto';
     };
-  }, [introDone]);
+  }, [phase]);
+
+  // after the video: let the names sit for a beat, then glide down to the cards
+  const handleVideoEnd = useCallback(() => {
+    setPhase('cards');
+    window.setTimeout(() => {
+      const hero = document.getElementById('hero-section');
+      if (hero) {
+        window.scrollTo({ top: hero.offsetTop + hero.offsetHeight, behavior: 'smooth' });
+      }
+      setShowScrollCue(true);
+    }, 1600);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => {
       const remaining = document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
-      setShowScrollCue(remaining > 160);
+      setShowScrollCue(phase === 'cards' && remaining > 160);
     };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [phase]);
 
   const scrollDown = () => window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'smooth' });
 
@@ -308,7 +338,7 @@ const ScrollableInvite = () => {
 
       <main className="velvet-deep relative mx-auto w-full max-w-[480px] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.6)]">
         {/* ============================ HERO ============================ */}
-        <Hero onFinish={() => setIntroDone(true)} />
+        <Hero onFinish={handleVideoEnd} />
 
         {/* ========================== BISMILLAH ========================== */}
         <Section

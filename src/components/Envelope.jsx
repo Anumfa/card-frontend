@@ -24,14 +24,6 @@ const Envelope = ({ onOpen }) => {
     return () => clearTimeout(timer);
   }, []);
 
-  // keep the page still while the curtains are closed
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, []);
-
   const handleOpen = () => {
     if (opened) return;
     setOpened(true);
